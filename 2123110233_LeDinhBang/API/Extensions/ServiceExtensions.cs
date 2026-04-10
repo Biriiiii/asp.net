@@ -11,12 +11,11 @@ public static class ServiceExtensions
 {
     public static IServiceCollection AddDatabase(this IServiceCollection services, IConfiguration config)
     {
+        // LẤY CHUỖI KẾT NỐI ONLINE
+        var connectionString = config.GetConnectionString("DefaultConnection");
+
         services.AddDbContext<AppDbContext>(options =>
-            options.UseSqlServer(
-                // DÁN TRỰC TIẾP CHUỖI KẾT NỐI VÀO ĐÂY:
-                "Server=.;Database=Book_Net8;User Id=sa;Password=123456;TrustServerCertificate=True;",
-                sqlOptions => sqlOptions.MigrationsAssembly("2123110233_LeDinhBang")
-            )
+            options.UseSqlServer(connectionString) // Sử dụng biến connectionString
         );
         return services;
     }
