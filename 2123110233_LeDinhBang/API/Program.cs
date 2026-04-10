@@ -1,5 +1,6 @@
 using BookStore.API.Extensions;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using System.Text;
@@ -79,6 +80,12 @@ builder.Services.AddCors(options =>
         .AllowCredentials()
     );
 });
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+});
 
 // ── Build ─────────────────────────────────────────────────
 var app = builder.Build();
@@ -95,5 +102,5 @@ app.UseCors("AllowFrontend");
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
-
+app.UseStaticFiles();
 app.Run();
