@@ -88,18 +88,21 @@ using (var scope = app.Services.CreateScope())
     var services = scope.ServiceProvider;
     try
     {
-        var appDb = services.GetRequiredService<AppDbContext>();
         var authDb = services.GetRequiredService<AuthDbContext>();
+        var appDb = services.GetRequiredService<AppDbContext>();
+        var logger = services.GetRequiredService<ILogger<Program>>();
 
-        await appDb.Database.MigrateAsync();
-        await authDb.Database.MigrateAsync();
+        logger.LogInformation("Đang kiểm tra và cập nhật Database...");
 
-        await DbSeeder.SeedAsync(appDb, authDb);
+        // Gọi hàm Seeder đã viết ở trên
+        await DbSeeder.SeedAsync(authDb, appDb);
+
+        logger.LogInformation("Cập nhật Database thành công!");
     }
     catch (Exception ex)
     {
         var logger = services.GetRequiredService<ILogger<Program>>();
-        logger.LogError(ex, "Lỗi khi seed dữ liệu.");
+        logger.LogError(ex, "Có lỗi xảy ra trong quá trình tự động tạo Database.");
     }
 }
 
