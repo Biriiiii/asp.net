@@ -7,7 +7,6 @@ public enum Gender
     Other,
     Unspecified
 }
-
 public enum UserRole
 {
     Customer,

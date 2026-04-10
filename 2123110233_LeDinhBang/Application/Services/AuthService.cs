@@ -20,40 +20,53 @@ public class AuthService : IAuthService
 
     public async Task<AuthTokenDto> LoginAsync(LoginRequest request)
     {
-        // 1. Kiểm tra đầu vào cơ bản
-        if (request == null || string.IsNullOrEmpty(request.Email) || string.IsNullOrEmpty(request.Password))
+        // 1. Kiểm tra đầu vào
+        if (request == null || string.IsNullOrWhiteSpace(request.Email) || string.IsNullOrWhiteSpace(request.Password))
+        {
             throw new Exception("Email và mật khẩu không được để trống.");
+        }
 
-        // 2. Tìm User từ Repository
+        // 2. Tìm người dùng theo Email (Sử dụng UserRepository đã tối ưu ToLower)
         var user = await _userRepository.GetByEmailAsync(request.Email);
 
-        // 3. Kiểm tra User và PasswordHash (Tránh lỗi Parameter 's' null)
+        // 3. Kiểm tra sự tồn tại của người dùng và tính hợp lệ của mật khẩu
         if (user == null || string.IsNullOrEmpty(user.PasswordHash))
-            throw new Exception("Email hoặc mật khẩu không đúng.");
+        {
+            throw new Exception("Tài khoản không tồn tại hoặc thông tin đăng nhập không chính xác.");
+        }
 
-        // 4. So sánh mật khẩu băm
+        // 4. Kiểm tra mật khẩu (Sử dụng hàm băm ComputeHash đồng bộ với DbSeeder)
         var hashAttempt = ComputeHash(request.Password);
         if (user.PasswordHash != hashAttempt)
-            throw new Exception("Email hoặc mật khẩu không đúng.");
+        {
+            throw new Exception("Mật khẩu không chính xác.");
+        }
 
-        if (!user.IsActive) throw new Exception("Tài khoản đã bị khóa.");
+        // 5. Kiểm tra trạng thái tài khoản
+        if (!user.IsActive)
+        {
+            throw new Exception("Tài khoản của bạn hiện đang bị khóa.");
+        }
 
-        // 5. Chuẩn bị dữ liệu Token
+        // 6. Chuẩn bị danh sách Roles (Lấy từ bảng junction UserRoles)
         var roles = user.UserRoles?.Select(r => r.Role.ToString()).ToList() ?? new List<string> { "Customer" };
+
+        // 7. Tạo Token và thời gian hết hạn
         var accessToken = _tokenService.GenerateAccessToken(user, roles);
         var refreshToken = _tokenService.GenerateRefreshToken();
 
-        var accessTokenExpiry = DateTime.UtcNow.AddHours(1);
+        // Giả sử AccessToken hết hạn sau 60 phút, RefreshToken sau 7 ngày
+        var accessTokenExpiry = DateTime.UtcNow.AddMinutes(60);
         var refreshTokenExpiry = DateTime.UtcNow.AddDays(7);
 
-        // 6. Tạo UserProfileDto (Khớp đúng 13 tham số theo cấu trúc record của bạn)
+        // 8. Mapping sang UserProfileDto (ĐÚNG 13 THAM SỐ THEO THỨ TỰ)
         var userProfile = new UserProfileDto(
             user.Id,                        // 1. Guid Id
             user.Email,                     // 2. string? Email
             user.FullName,                  // 3. string FullName
             user.Phone,                     // 4. string? Phone
             user.DateOfBirth,               // 5. DateTime? DateOfBirth
-            user.Gender.ToString(),         // 6. string Gender (Chuyển Enum sang string)
+            user.Gender.ToString(),         // 6. string Gender (Chuyển Enum sang String)
             user.AvatarUrl,                 // 7. string? AvatarUrl
             user.EmailVerified,             // 8. bool EmailVerified
             user.PhoneVerified,             // 9. bool PhoneVerified
@@ -63,21 +76,31 @@ public class AuthService : IAuthService
             user.CreatedAt                  // 13. DateTime CreatedAt
         );
 
-        // 7. Tạo AuthTokenDto (Khớp đúng 5 tham số theo cấu trúc record của bạn)
+        // 9. Cập nhật thời gian đăng nhập cuối cùng
+        user.LastLoginAt = DateTime.UtcNow;
+        _userRepository.Update(user);
+        await _userRepository.SaveChangesAsync();
+
+        // 10. Trả về AuthTokenDto hoàn chỉnh
         return new AuthTokenDto(
-            accessToken,                    // 1. string AccessToken
-            refreshToken,                   // 2. string RefreshToken
-            accessTokenExpiry,              // 3. DateTime AccessTokenExpiry
-            refreshTokenExpiry,             // 4. DateTime RefreshTokenExpiry
-            userProfile                     // 5. UserProfileDto User
+            accessToken,
+            refreshToken,
+            accessTokenExpiry,
+            refreshTokenExpiry,
+            userProfile
         );
     }
 
+    // Hàm hỗ trợ băm mật khẩu (Đảm bảo dùng chung Salt với DbSeeder)
     private string ComputeHash(string password)
     {
         if (string.IsNullOrEmpty(password)) return string.Empty;
-        using var sha = SHA256.Create();
-        var bytes = sha.ComputeHash(Encoding.UTF8.GetBytes(password + _salt));
+
+        // Dùng mã Salt cố định để khớp với dữ liệu đã lưu trong DB
+        const string salt = "BookStore_Salt_2024";
+
+        using var sha = System.Security.Cryptography.SHA256.Create();
+        var bytes = sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes(password + salt));
         return Convert.ToBase64String(bytes);
     }
 
