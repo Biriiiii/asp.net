@@ -11,10 +11,12 @@ public static class AuthServiceExtensions
 {
     public static IServiceCollection AddAuthDatabase(this IServiceCollection services, IConfiguration config)
     {
+        // 1. Lấy chuỗi kết nối từ cấu hình (Nó sẽ tự tìm trong appsettings hoặc Environment Variables)
+        var connectionString = config.GetConnectionString("DefaultConnection");
+
         services.AddDbContext<AuthDbContext>(options =>
             options.UseSqlServer(
-                // DÁN TRỰC TIẾP CHUỖI KẾT NỐI VÀO ĐÂY:
-                "Server=.;Database=Book_Net8;User Id=sa;Password=123456;TrustServerCertificate=True;",
+                connectionString, // Không dán chết nữa, dùng biến này!
                 sqlOptions => sqlOptions.MigrationsAssembly("2123110233_LeDinhBang")
             )
         );
