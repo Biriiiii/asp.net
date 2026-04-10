@@ -1,26 +1,29 @@
 using BookStore.API.Extensions;
 using BookStore.Application.Interfaces;
-using BookStore.Application.Services;
+using BookStore.Infrastructure.Data;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// ── Database ──────────────────────────────────────────────
+// ── 1. Cấu hình Services (DI Container) ──────────────────
 builder.Services.AddDatabase(builder.Configuration);
+builder.Services.AddAuthDatabase(builder.Configuration);
 
-// ── Repositories & Services ───────────────────────────────
+builder.Services.AddScoped<IEmailService, MockEmailService>();
+builder.Services.AddScoped<ISmsService, MockSmsService>();
+builder.Services.AddScoped<IOAuthService, MockOAuthService>();
+
 builder.Services.AddRepositories();
+builder.Services.AddAuthRepositories();
 builder.Services.AddProductServices();
-
-// Đã thêm đăng ký DI chuẩn xác
-builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddAuthServices();
 
 // ── Auth (JWT) ────────────────────────────────────────────
-// Đã thêm phao cứu sinh tránh lỗi Parameter 's' trên Render
 var jwtKey = builder.Configuration["Jwt:Key"] ?? "b8f9a2c4d6e8b1a3f5c7d9e0b2a4c6e8f0a1b3c5d7e9f1a2b4c6";
 var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "BookStoreAPI";
 var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "BookStoreClient";
@@ -36,14 +39,11 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateIssuerSigningKey = true,
             ValidIssuer = jwtIssuer,
             ValidAudience = jwtAudience,
-            IssuerSigningKey = new SymmetricSecurityKey(
-                Encoding.UTF8.GetBytes(jwtKey))
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
         };
     });
 
 builder.Services.AddAuthorization();
-
-// ── Controllers ───────────────────────────────────────────
 builder.Services.AddControllers()
     .AddJsonOptions(opt =>
     {
@@ -51,16 +51,10 @@ builder.Services.AddControllers()
         opt.JsonSerializerOptions.DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull;
     });
 
-// ── Swagger ───────────────────────────────────────────────
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
-    c.SwaggerDoc("v1", new OpenApiInfo
-    {
-        Title = "BookStore API",
-        Version = "v1",
-        Description = "API phần mềm bán sách trực tuyến"
-    });
+    c.SwaggerDoc("v1", new OpenApiInfo { Title = "BookStore API", Version = "v1" });
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
         Name = "Authorization",
@@ -78,35 +72,45 @@ builder.Services.AddSwaggerGen(c =>
     });
 });
 
-// ── CORS & Forwarded Headers ──────────────────────────────
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", policy =>
-        policy.WithOrigins(
-            builder.Configuration.GetSection("AllowedOrigins").Get<string[]>() ?? Array.Empty<string>()
-        )
-        .AllowAnyHeader()
-        .AllowAnyMethod()
-        .AllowCredentials()
-    );
-});
-builder.Services.Configure<ForwardedHeadersOptions>(options =>
-{
-    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
-    options.KnownNetworks.Clear();
-    options.KnownProxies.Clear();
+        policy.WithOrigins(builder.Configuration.GetSection("AllowedOrigins").Get<string[]>() ?? Array.Empty<string>())
+        .AllowAnyHeader().AllowAnyMethod().AllowCredentials());
 });
 
-// ── Build ─────────────────────────────────────────────────
+// ── 2. Build Ứng dụng ─────────────────────────────────────
 var app = builder.Build();
 
-// Đã gọi ra để chặn lỗi mất CSS của Swagger
-app.UseForwardedHeaders();
+// ── 3. Tự động Seed dữ liệu (Phải nằm SAU builder.Build()) ──
+using (var scope = app.Services.CreateScope())
+{
+    var services = scope.ServiceProvider;
+    try
+    {
+        var appDb = services.GetRequiredService<AppDbContext>();
+        var authDb = services.GetRequiredService<AuthDbContext>();
+
+        await appDb.Database.MigrateAsync();
+        await authDb.Database.MigrateAsync();
+
+        await DbSeeder.SeedAsync(appDb, authDb);
+    }
+    catch (Exception ex)
+    {
+        var logger = services.GetRequiredService<ILogger<Program>>();
+        logger.LogError(ex, "Lỗi khi seed dữ liệu.");
+    }
+}
+
+// ── 4. Middleware Pipeline ───────────────────────────────
+app.UseForwardedHeaders(new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
+});
+
 app.UseMiddleware<ExceptionMiddleware>();
-
-// Đã chuyển lên đúng vị trí
 app.UseStaticFiles();
-
 app.UseSwagger();
 app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "BookStore API v1"));
 
@@ -117,3 +121,22 @@ app.UseAuthorization();
 app.MapControllers();
 
 app.Run();
+
+// ── 5. Mock Services ──────────────────────────────────────
+public class MockEmailService : IEmailService
+{
+    public Task SendEmailVerificationAsync(string toEmail, string fullName, string token) => Task.CompletedTask;
+    public Task SendPasswordResetAsync(string toEmail, string fullName, string token) => Task.CompletedTask;
+    public Task SendOrderConfirmationAsync(string toEmail, string fullName, string orderCode) => Task.CompletedTask;
+}
+
+public class MockSmsService : ISmsService
+{
+    public Task SendOtpAsync(string phone, string otp) => Task.CompletedTask;
+}
+
+public class MockOAuthService : IOAuthService
+{
+    public Task<BookStore.Application.Interfaces.OAuthUserInfo> ValidateGoogleTokenAsync(string idToken) => throw new NotImplementedException();
+    public Task<BookStore.Application.Interfaces.OAuthUserInfo> ValidateFacebookTokenAsync(string accessToken) => throw new NotImplementedException();
+}

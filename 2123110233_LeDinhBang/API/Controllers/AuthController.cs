@@ -35,34 +35,34 @@ public class AuthController : ControllerBase
         return Ok(result);
     }
 
-    /// <summary>Đăng nhập bằng số điện thoại + OTP</summary>
-    [HttpPost("login/phone")]
-    [ProducesResponseType(typeof(AuthTokenDto), 200)]
-    [ProducesResponseType(401)]
-    public async Task<IActionResult> LoginWithPhone([FromBody] PhoneLoginRequest request)
-    {
-        var result = await _auth.LoginWithPhoneAsync(request);
-        return Ok(result);
-    }
+    ///// <summary>Đăng nhập bằng số điện thoại + OTP</summary>
+    //[HttpPost("login/phone")]
+    //[ProducesResponseType(typeof(AuthTokenDto), 200)]
+    //[ProducesResponseType(401)]
+    //public async Task<IActionResult> LoginWithPhone([FromBody] PhoneLoginRequest request)
+    //{
+    //    var result = await _auth.LoginWithPhoneAsync(request);
+    //    return Ok(result);
+    //}
 
-    /// <summary>Gửi OTP về số điện thoại</summary>
-    [HttpPost("otp/send")]
-    [ProducesResponseType(200)]
-    public async Task<IActionResult> SendOtp([FromBody] SendOtpRequest request)
-    {
-        await _auth.SendPhoneOtpAsync(request);
-        return Ok(new { message = "OTP đã được gửi." });
-    }
+    ///// <summary>Gửi OTP về số điện thoại</summary>
+    //[HttpPost("otp/send")]
+    //[ProducesResponseType(200)]
+    //public async Task<IActionResult> SendOtp([FromBody] SendOtpRequest request)
+    //{
+    //    await _auth.SendPhoneOtpAsync(request);
+    //    return Ok(new { message = "OTP đã được gửi." });
+    //}
 
-    /// <summary>Đăng nhập qua Google hoặc Facebook</summary>
-    [HttpPost("oauth")]
-    [ProducesResponseType(typeof(AuthTokenDto), 200)]
-    [ProducesResponseType(400)]
-    public async Task<IActionResult> OAuth([FromBody] OAuthCallbackRequest request)
-    {
-        var result = await _auth.LoginWithOAuthAsync(request);
-        return Ok(result);
-    }
+    ///// <summary>Đăng nhập qua Google hoặc Facebook</summary>
+    //[HttpPost("oauth")]
+    //[ProducesResponseType(typeof(AuthTokenDto), 200)]
+    //[ProducesResponseType(400)]
+    //public async Task<IActionResult> OAuth([FromBody] OAuthCallbackRequest request)
+    //{
+    //    var result = await _auth.LoginWithOAuthAsync(request);
+    //    return Ok(result);
+    //}
 
     /// <summary>Làm mới access token bằng refresh token</summary>
     [HttpPost("refresh")]
@@ -106,47 +106,47 @@ public class AuthController : ControllerBase
         return Ok(new { message = "Email xác minh đã được gửi." });
     }
 
-    /// <summary>Xác minh email bằng token</summary>
-    [HttpPost("email/verify")]
-    [ProducesResponseType(200)]
-    [ProducesResponseType(400)]
-    public async Task<IActionResult> VerifyEmail([FromBody] VerifyEmailRequest request)
-    {
-        await _auth.VerifyEmailAsync(request);
-        return Ok(new { message = "Xác minh email thành công." });
-    }
+    ///// <summary>Xác minh email bằng token</summary>
+    //[HttpPost("email/verify")]
+    //[ProducesResponseType(200)]
+    //[ProducesResponseType(400)]
+    //public async Task<IActionResult> VerifyEmail([FromBody] VerifyEmailRequest request)
+    //{
+    //    await _auth.VerifyEmailAsync(request);
+    //    return Ok(new { message = "Xác minh email thành công." });
+    //}
 
-    /// <summary>Yêu cầu đặt lại mật khẩu (gửi link về email)</summary>
-    [HttpPost("password/forgot")]
-    [ProducesResponseType(200)]
-    public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest request)
-    {
-        await _auth.ForgotPasswordAsync(request);
-        // Luôn trả 200 để tránh enumeration attack
-        return Ok(new { message = "Nếu email tồn tại, link đặt lại mật khẩu đã được gửi." });
-    }
+    ///// <summary>Yêu cầu đặt lại mật khẩu (gửi link về email)</summary>
+    //[HttpPost("password/forgot")]
+    //[ProducesResponseType(200)]
+    //public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest request)
+    //{
+    //    await _auth.ForgotPasswordAsync(request);
+    //    // Luôn trả 200 để tránh enumeration attack
+    //    return Ok(new { message = "Nếu email tồn tại, link đặt lại mật khẩu đã được gửi." });
+    //}
 
-    /// <summary>Đặt lại mật khẩu bằng token từ email</summary>
-    [HttpPost("password/reset")]
-    [ProducesResponseType(200)]
-    [ProducesResponseType(400)]
-    public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest request)
-    {
-        await _auth.ResetPasswordAsync(request);
-        return Ok(new { message = "Đặt lại mật khẩu thành công. Vui lòng đăng nhập lại." });
-    }
+    ///// <summary>Đặt lại mật khẩu bằng token từ email</summary>
+    //[HttpPost("password/reset")]
+    //[ProducesResponseType(200)]
+    //[ProducesResponseType(400)]
+    //public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest request)
+    //{
+    //    await _auth.ResetPasswordAsync(request);
+    //    return Ok(new { message = "Đặt lại mật khẩu thành công. Vui lòng đăng nhập lại." });
+    //}
 
-    /// <summary>Đổi mật khẩu khi đang đăng nhập</summary>
-    [HttpPost("password/change")]
-    [Authorize]
-    [ProducesResponseType(200)]
-    [ProducesResponseType(400)]
-    public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest request)
-    {
-        var userId = GetCurrentUserId();
-        await _auth.ChangePasswordAsync(userId, request);
-        return Ok(new { message = "Đổi mật khẩu thành công." });
-    }
+    ///// <summary>Đổi mật khẩu khi đang đăng nhập</summary>
+    //[HttpPost("password/change")]
+    //[Authorize]
+    //[ProducesResponseType(200)]
+    //[ProducesResponseType(400)]
+    //public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest request)
+    //{
+    //    var userId = GetCurrentUserId();
+    //    await _auth.ChangePasswordAsync(userId, request);
+    //    return Ok(new { message = "Đổi mật khẩu thành công." });
+    //}
 
     private Guid GetCurrentUserId() =>
         Guid.Parse(User.FindFirstValue(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub)!);

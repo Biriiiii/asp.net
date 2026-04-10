@@ -13,8 +13,9 @@ public static class ServiceExtensions
     {
         services.AddDbContext<AppDbContext>(options =>
             options.UseSqlServer(
-                config.GetConnectionString("DefaultConnection"),
-                npgsql => npgsql.MigrationsAssembly("BookStore.Infrastructure")
+                // DÁN TRỰC TIẾP CHUỖI KẾT NỐI VÀO ĐÂY:
+                "Server=.;Database=Book_Net8;User Id=sa;Password=123456;TrustServerCertificate=True;",
+                sqlOptions => sqlOptions.MigrationsAssembly("2123110233_LeDinhBang")
             )
         );
         return services;
