@@ -1,4 +1,6 @@
 using BookStore.API.Extensions;
+using BookStore.Application.Interfaces;
+using BookStore.Application.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.IdentityModel.Tokens;
@@ -14,20 +16,28 @@ builder.Services.AddDatabase(builder.Configuration);
 builder.Services.AddRepositories();
 builder.Services.AddProductServices();
 
+// Đã thêm đăng ký DI chuẩn xác
+builder.Services.AddScoped<IAuthService, AuthService>();
+
 // ── Auth (JWT) ────────────────────────────────────────────
+// Đã thêm phao cứu sinh tránh lỗi Parameter 's' trên Render
+var jwtKey = builder.Configuration["Jwt:Key"] ?? "b8f9a2c4d6e8b1a3f5c7d9e0b2a4c6e8f0a1b3c5d7e9f1a2b4c6";
+var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "BookStoreAPI";
+var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "BookStoreClient";
+
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
         options.TokenValidationParameters = new TokenValidationParameters
         {
-            ValidateIssuer           = true,
-            ValidateAudience         = true,
-            ValidateLifetime         = true,
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
             ValidateIssuerSigningKey = true,
-            ValidIssuer              = builder.Configuration["Jwt:Issuer"],
-            ValidAudience            = builder.Configuration["Jwt:Audience"],
-            IssuerSigningKey         = new SymmetricSecurityKey(
-                Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]!))
+            ValidIssuer = jwtIssuer,
+            ValidAudience = jwtAudience,
+            IssuerSigningKey = new SymmetricSecurityKey(
+                Encoding.UTF8.GetBytes(jwtKey))
         };
     });
 
@@ -37,8 +47,8 @@ builder.Services.AddAuthorization();
 builder.Services.AddControllers()
     .AddJsonOptions(opt =>
     {
-        opt.JsonSerializerOptions.PropertyNamingPolicy        = System.Text.Json.JsonNamingPolicy.CamelCase;
-        opt.JsonSerializerOptions.DefaultIgnoreCondition      = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull;
+        opt.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
+        opt.JsonSerializerOptions.DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull;
     });
 
 // ── Swagger ───────────────────────────────────────────────
@@ -47,17 +57,17 @@ builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new OpenApiInfo
     {
-        Title   = "BookStore API",
+        Title = "BookStore API",
         Version = "v1",
         Description = "API phần mềm bán sách trực tuyến"
     });
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
-        Name         = "Authorization",
-        Type         = SecuritySchemeType.Http,
-        Scheme       = "bearer",
+        Name = "Authorization",
+        Type = SecuritySchemeType.Http,
+        Scheme = "bearer",
         BearerFormat = "JWT",
-        Description  = "Nhập JWT token: Bearer {token}"
+        Description = "Nhập JWT token: Bearer {token}"
     });
     c.AddSecurityRequirement(new OpenApiSecurityRequirement
     {
@@ -68,7 +78,7 @@ builder.Services.AddSwaggerGen(c =>
     });
 });
 
-// ── CORS ──────────────────────────────────────────────────
+// ── CORS & Forwarded Headers ──────────────────────────────
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", policy =>
@@ -90,17 +100,20 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 // ── Build ─────────────────────────────────────────────────
 var app = builder.Build();
 
+// Đã gọi ra để chặn lỗi mất CSS của Swagger
+app.UseForwardedHeaders();
 app.UseMiddleware<ExceptionMiddleware>();
 
+// Đã chuyển lên đúng vị trí
+app.UseStaticFiles();
 
-   app.UseSwagger();
-   app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "BookStore API v1"));
-
+app.UseSwagger();
+app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "BookStore API v1"));
 
 app.UseHttpsRedirection();
 app.UseCors("AllowFrontend");
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
-app.UseStaticFiles();
+
 app.Run();
