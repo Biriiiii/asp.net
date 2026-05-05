@@ -39,7 +39,6 @@ public class VoucherRepository : IVoucherRepository
             VoucherId = voucherId, UserId = userId,
             OrderId = orderId, DiscountApplied = discountApplied
         });
-        await _db.SaveChangesAsync();
     }
 
     public async Task DecrementUsageAsync(Guid voucherId, Guid userId)
@@ -49,7 +48,6 @@ public class VoucherRepository : IVoucherRepository
         var usage = await _db.VoucherUsages
             .FirstOrDefaultAsync(u => u.VoucherId == voucherId && u.UserId == userId);
         if (usage != null) _db.VoucherUsages.Remove(usage);
-        await _db.SaveChangesAsync();
     }
 
     public async Task AddAsync(Voucher v) => await _db.Vouchers.AddAsync(v);

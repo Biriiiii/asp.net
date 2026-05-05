@@ -36,7 +36,7 @@ public class VoucherService : IVoucherService
     public async Task<PagedResult<VoucherDto>> GetPagedAsync(int page, int pageSize, bool? isActive)
     {
         var (items, total) = await _vouchers.GetPagedAsync(page, pageSize, isActive);
-        return new PagedResult<VoucherDto>(items.Select(Map), total, page, pageSize);
+        return new PagedResult<VoucherDto>(items.Select(v => Map(v)), total, page, pageSize);
     }
 
     public async Task<VoucherDto> GetByIdAsync(Guid id)

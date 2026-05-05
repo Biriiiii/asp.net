@@ -43,13 +43,13 @@ public class ProductService : IProductService
             IsFeatured = query.IsFeatured,
             InStockOnly= query.InStockOnly,
             SortBy     = query.SortBy,
-            Page       = query.Page,
-            PageSize   = query.PageSize
+            Page       = Math.Max(1, query.Page),
+            PageSize   = Math.Clamp(query.PageSize, 1, 100)
         };
 
         var (items, total) = await _products.GetPagedAsync(filter);
         var dtos = items.Select(MapToListItem);
-        return new PagedResult<ProductListItemDto>(dtos, total, query.Page, query.PageSize);
+        return new PagedResult<ProductListItemDto>(dtos, total, filter.Page, filter.PageSize);
     }
 
     public async Task<ProductDetailDto> GetByIdAsync(Guid id)

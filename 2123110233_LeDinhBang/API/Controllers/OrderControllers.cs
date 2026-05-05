@@ -73,8 +73,19 @@ public class OrdersController : ControllerBase
     [ProducesResponseType(403)]
     public async Task<IActionResult> Cancel(Guid id, [FromBody] CancelOrderRequest request)
     {
-        var result = await _service.CancelAsync(GetUserId(), id, request);
-        return Ok(result);
+        try 
+        {
+            var result = await _service.CancelAsync(GetUserId(), id, request);
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { 
+                message = ex.Message, 
+                detail = ex.InnerException?.Message,
+                stack = ex.StackTrace 
+            });
+        }
     }
 
 
@@ -125,9 +136,19 @@ public class AdminOrdersController : ControllerBase
     [HttpPatch("{id:guid}/status")]
     public async Task<IActionResult> UpdateStatus(Guid id, [FromBody] AdminUpdateOrderStatusRequest request)
     {
-        // Đảm bảo dòng này đang gọi đúng service
-        var result = await _service.UpdateStatusAsync(id, request, GetUserId());
-        return Ok(result);
+        try 
+        {
+            var result = await _service.UpdateStatusAsync(id, request, GetUserId());
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { 
+                message = ex.Message, 
+                detail = ex.InnerException?.Message,
+                stack = ex.StackTrace 
+            });
+        }
     }
 
     /// <summary>Gán mã vận đơn → chuyển sang Shipping</summary>

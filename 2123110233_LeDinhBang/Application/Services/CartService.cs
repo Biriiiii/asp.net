@@ -10,12 +10,14 @@ namespace BookStore.Application.Services;
 public class CartService : ICartService
 {
     private readonly ICartRepository _carts;
-    private readonly AppDbContext    _db;      // dùng trực tiếp để IgnoreQueryFilters
+    private readonly IFlashSaleRepository _flashSales; // Thêm repository flash sale
+    private readonly AppDbContext    _db;      
     private const int MaxDistinctItems = 20;
 
-    public CartService(ICartRepository carts, AppDbContext db)
+    public CartService(ICartRepository carts, IFlashSaleRepository flashSales, AppDbContext db)
     {
         _carts = carts;
+        _flashSales = flashSales;
         _db    = db;
     }
 
@@ -25,7 +27,11 @@ public class CartService : ICartService
             ? await _carts.GetWithItemsAsync(userId.Value)
             : await _carts.GetWithItemsBySessionAsync(sessionId ?? "");
 
-        return cart == null ? EmptyCart() : MapCart(cart);
+        if (cart == null) return EmptyCart();
+        
+        // Lấy flash sale đang diễn ra
+        var activeFS = await _flashSales.GetActiveAsync();
+        return MapCart(cart, activeFS);
     }
 
     public async Task<CartDto> AddItemAsync(Guid? userId, string? sessionId, AddToCartRequest req)
@@ -92,14 +98,18 @@ public class CartService : ICartService
         if (req.Quantity > stock)
             throw new InvalidOperationException($"Chỉ còn {stock} sản phẩm trong kho.");
 
+        // Kiểm tra xem sản phẩm có đang Flash Sale không
+        var activeFS = await _flashSales.GetActiveAsync();
+        var fsItem = activeFS?.Items.FirstOrDefault(i => i.ProductId == req.ProductId && i.IsAvailable);
+        
         var newItem = new CartItem
         {
-            CartId    = cart.Id, // Đã có ID thật từ nhịp 1
+            CartId    = cart.Id, 
             ProductId = req.ProductId,
             Quantity  = req.Quantity,
-            UnitPrice = product.SalePrice > 0 ? product.SalePrice : product.OriginalPrice
+            UnitPrice = fsItem != null ? fsItem.SalePrice : (product.SalePrice > 0 ? product.SalePrice : product.OriginalPrice)
         };
-        _db.Set<CartItem>().Add(newItem); // Chỉ định rõ cho EF Core: ĐÂY LÀ LỆNH INSERT
+        _db.Set<CartItem>().Add(newItem);
     }
 
     // 5. Lưu xuống DB (Nhịp 2)
@@ -113,12 +123,14 @@ public class CartService : ICartService
         return await GetCartAsync(userId, sessionId); 
     }
 
-    // 6. Lấy lại toàn bộ Giỏ hàng (dùng repository cũ của bạn để Map sang DTO)
+    // 6. Lấy lại toàn bộ Giỏ hàng
     var updated = userId.HasValue
         ? await _carts.GetWithItemsAsync(userId.Value)
         : await _carts.GetWithItemsBySessionAsync(sessionId ?? "");
 
-    return updated == null ? EmptyCart() : MapCart(updated); 
+    if (updated == null) return EmptyCart();
+    var finalFS = await _flashSales.GetActiveAsync();
+    return MapCart(updated, finalFS); 
 }
 
     public async Task<CartDto> UpdateItemAsync(Guid? userId, string? sessionId, Guid itemId, UpdateCartItemRequest req)
@@ -135,7 +147,9 @@ public class CartService : ICartService
         cart.UpdatedAt = DateTime.UtcNow;
         _carts.Update(cart);
         await _carts.SaveChangesAsync();
-        return MapCart(cart);
+        
+        var activeFS = await _flashSales.GetActiveAsync();
+        return MapCart(cart, activeFS);
     }
 
     public async Task<CartDto> RemoveItemAsync(Guid? userId, string? sessionId, Guid itemId)
@@ -148,7 +162,9 @@ public class CartService : ICartService
         cart.UpdatedAt = DateTime.UtcNow;
         _carts.Update(cart);
         await _carts.SaveChangesAsync();
-        return MapCart(cart);
+
+        var activeFS = await _flashSales.GetActiveAsync();
+        return MapCart(cart, activeFS);
     }
 
     public async Task ClearCartAsync(Guid? userId, string? sessionId)
@@ -215,28 +231,37 @@ public class CartService : ICartService
     private static CartDto EmptyCart() =>
         new(Guid.Empty, Enumerable.Empty<CartItemDto>(), 0, 0, DateTime.UtcNow);
 
-    private static CartDto MapCart(Cart cart) =>
+    private static CartDto MapCart(Cart cart, FlashSale? activeFS = null) =>
         new(cart.Id,
-            cart.Items.Select(i => new CartItemDto(
-                i.Id,
-                i.ProductId,
-                i.Product?.Title ?? "",
-                i.Product?.Images?.FirstOrDefault(img => img.IsPrimary)?.ImageUrl
-                    ?? i.Product?.Images?.OrderBy(img => img.DisplayOrder).FirstOrDefault()?.ImageUrl,
-                i.Product?.ProductAuthors != null
-                    ? string.Join(", ", i.Product.ProductAuthors.Select(pa => pa.Author?.Name ?? "").Where(n => !string.IsNullOrEmpty(n)))
-                    : null,
-                i.Quantity,
-                i.UnitPrice,
-                i.UnitPrice * i.Quantity,
-                i.Product?.Inventory != null
-                    ? (i.Product.Inventory.QtyAvailable - i.Product.Inventory.QtyReserved) > 0
-                    : false,
-                i.Product?.Inventory != null
-                    ? Math.Max(0, i.Product.Inventory.QtyAvailable - i.Product.Inventory.QtyReserved)
-                    : 0
-            )),
-            cart.Items.Sum(i => i.UnitPrice * i.Quantity),
+            cart.Items.Select(i => {
+                // Ưu tiên lấy giá Flash Sale nếu có
+                var fsItem = activeFS?.Items.FirstOrDefault(f => f.ProductId == i.ProductId && f.IsAvailable);
+                var unitPrice = fsItem != null ? fsItem.SalePrice : i.UnitPrice;
+                
+                return new CartItemDto(
+                    i.Id,
+                    i.ProductId,
+                    i.Product?.Title ?? "",
+                    i.Product?.Images?.FirstOrDefault(img => img.IsPrimary)?.ImageUrl
+                        ?? i.Product?.Images?.OrderBy(img => img.DisplayOrder).FirstOrDefault()?.ImageUrl,
+                    i.Product?.ProductAuthors != null
+                        ? string.Join(", ", i.Product.ProductAuthors.Select(pa => pa.Author?.Name ?? "").Where(n => !string.IsNullOrEmpty(n)))
+                        : null,
+                    i.Quantity,
+                    unitPrice,
+                    unitPrice * i.Quantity,
+                    i.Product?.Inventory != null
+                        ? (i.Product.Inventory.QtyAvailable - i.Product.Inventory.QtyReserved) > 0
+                        : false,
+                    i.Product?.Inventory != null
+                        ? Math.Max(0, i.Product.Inventory.QtyAvailable - i.Product.Inventory.QtyReserved)
+                        : 0
+                );
+            }),
+            cart.Items.Sum(i => {
+                var fsItem = activeFS?.Items.FirstOrDefault(f => f.ProductId == i.ProductId && f.IsAvailable);
+                return (fsItem != null ? fsItem.SalePrice : i.UnitPrice) * i.Quantity;
+            }),
             cart.Items.Sum(i => i.Quantity),
             cart.UpdatedAt);
 }

@@ -24,9 +24,18 @@ public class VouchersController : ControllerBase
     [ProducesResponseType(typeof(VoucherValidateDto), 200)]
     public async Task<IActionResult> Validate([FromBody] ValidateVoucherRequest request)
     {
-        var userId = Guid.Parse(User.FindFirstValue(JwtRegisteredClaimNames.Sub)!);
+        var userId = GetUserId();
         var result = await _service.ValidateAsync(request.Code, userId, request.Subtotal);
         return Ok(result);
+    }
+
+    private Guid GetUserId()
+    {
+        var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier) 
+                       ?? User.FindFirstValue(JwtRegisteredClaimNames.Sub);
+        if (string.IsNullOrEmpty(userIdClaim))
+            throw new UnauthorizedAccessException("Không tìm thấy thông tin người dùng trong Token.");
+        return Guid.Parse(userIdClaim);
     }
 
     /// <summary>Danh sách voucher [Admin/Marketing]</summary>
@@ -35,7 +44,17 @@ public class VouchersController : ControllerBase
     [ProducesResponseType(typeof(PagedResult<VoucherDto>), 200)]
     public async Task<IActionResult> GetAll([FromQuery] int page = 1, [FromQuery] int pageSize = 20,
         [FromQuery] bool? isActive = null)
-        => Ok(await _service.GetPagedAsync(page, pageSize, isActive));
+    {
+        try 
+        {
+            var result = await _service.GetPagedAsync(page, pageSize, isActive);
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { message = ex.Message, detail = ex.InnerException?.Message });
+        }
+    }
 
     /// <summary>Chi tiết voucher [Admin/Marketing]</summary>
     [HttpGet("{id:guid}")]

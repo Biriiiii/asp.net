@@ -127,10 +127,13 @@ public class ProductRepository : Repository<Product>, IProductRepository
             _            => query.OrderByDescending(p => p.CreatedAt)
         };
 
+        var page = Math.Max(1, f.Page);
+        var pageSize = Math.Max(1, f.PageSize);
+
         var total = await query.CountAsync();
         var items = await query
-            .Skip((f.Page - 1) * f.PageSize)
-            .Take(f.PageSize)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .AsNoTracking()   // List dùng AsNoTracking vì chỉ đọc
             .ToListAsync();
 
