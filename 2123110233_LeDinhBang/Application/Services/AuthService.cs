@@ -105,7 +105,70 @@ public class AuthService : IAuthService
     }
 
     // Các phương thức khác (Tạm thời throw để build được)
-    public Task<AuthTokenDto> RegisterAsync(RegisterRequest request) => throw new NotImplementedException();
+    public async Task<AuthTokenDto> RegisterAsync(RegisterRequest request)
+    {
+        // 1. Kiểm tra Email tồn tại
+        var existingUser = await _userRepository.GetByEmailAsync(request.Email);
+        if (existingUser != null)
+        {
+            throw new Exception("Email này đã được đăng ký bởi một tài khoản khác.");
+        }
+
+        // 2. Tạo thực thể User mới (Giả sử Entity User nằm trong BookStore.Domain.Entities)
+        // Lưu ý: Cần kiểm tra đúng namespace và tên các thuộc tính của User entity
+        var user = new BookStore.Domain.Entities.User
+        {
+            Id = Guid.NewGuid(),
+            Email = request.Email.ToLower(),
+            FullName = request.FullName,
+            Phone = request.Phone,
+            PasswordHash = ComputeHash(request.Password),
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow,
+            Gender = BookStore.Domain.Enums.Gender.Unspecified,
+            LoyaltyPoints = 0,
+            EmailVerified = false,
+            PhoneVerified = false
+        };
+
+        // 3. Lưu vào database
+        await _userRepository.AddAsync(user);
+        await _userRepository.SaveChangesAsync();
+
+        // 4. Mặc định gán Role Customer
+        var roles = new List<string> { "Customer" };
+
+        // 5. Tạo Token để người dùng đăng nhập ngay lập tức
+        var accessToken = _tokenService.GenerateAccessToken(user, roles);
+        var refreshToken = _tokenService.GenerateRefreshToken();
+        var accessTokenExpiry = DateTime.UtcNow.AddMinutes(60);
+        var refreshTokenExpiry = DateTime.UtcNow.AddDays(7);
+
+        // 6. Trả về thông tin đăng nhập
+        var userProfile = new UserProfileDto(
+            user.Id,
+            user.Email,
+            user.FullName,
+            user.Phone,
+            user.DateOfBirth,
+            user.Gender.ToString(),
+            user.AvatarUrl,
+            user.EmailVerified,
+            user.PhoneVerified,
+            user.LoyaltyPoints,
+            roles,
+            user.LastLoginAt,
+            user.CreatedAt
+        );
+
+        return new AuthTokenDto(
+            accessToken,
+            refreshToken,
+            accessTokenExpiry,
+            refreshTokenExpiry,
+            userProfile
+        );
+    }
     public Task<AuthTokenDto> LoginWithPhoneAsync(PhoneLoginRequest request) => throw new NotImplementedException();
     public Task<AuthTokenDto> LoginWithOAuthAsync(OAuthCallbackRequest request) => throw new NotImplementedException();
     public Task<AuthTokenDto> RefreshTokenAsync(RefreshTokenRequest request) => throw new NotImplementedException();

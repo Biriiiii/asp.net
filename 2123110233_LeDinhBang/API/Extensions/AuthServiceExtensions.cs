@@ -11,12 +11,12 @@ public static class AuthServiceExtensions
 {
     public static IServiceCollection AddAuthDatabase(this IServiceCollection services, IConfiguration config)
     {
-        // 1. Lấy chuỗi kết nối từ cấu hình (Nó sẽ tự tìm trong appsettings hoặc Environment Variables)
-        var connectionString = config.GetConnectionString("DefaultConnection");
+        var connectionString = config.GetConnectionString("DefaultConnection")
+            ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
 
         services.AddDbContext<AuthDbContext>(options =>
             options.UseSqlServer(
-                connectionString, // Không dán chết nữa, dùng biến này!
+                connectionString,
                 sqlOptions => sqlOptions.MigrationsAssembly("2123110233_LeDinhBang")
             )
         );
@@ -25,21 +25,20 @@ public static class AuthServiceExtensions
 
     public static IServiceCollection AddAuthRepositories(this IServiceCollection services)
     {
-        services.AddScoped<IUserRepository,          UserRepository>();
-        services.AddScoped<IUserSessionRepository,   UserSessionRepository>();
+        services.AddScoped<IUserRepository, UserRepository>();
+        services.AddScoped<IUserSessionRepository, UserSessionRepository>();
         services.AddScoped<IExternalLoginRepository, ExternalLoginRepository>();
-        services.AddScoped<IOtpRepository,           OtpRepository>();
-        services.AddScoped<IAddressRepository,       AddressRepository>();
+        services.AddScoped<IOtpRepository, OtpRepository>();
+        services.AddScoped<IAddressRepository, AddressRepository>();
         return services;
     }
 
     public static IServiceCollection AddAuthServices(this IServiceCollection services)
     {
-        services.AddScoped<ITokenService,      TokenService>();
-        services.AddScoped<IAuthService,       AuthService>();
-        services.AddScoped<IUserService,       UserService>();
-        services.AddScoped<IAdminUserService,  AdminUserService>();
+        services.AddScoped<ITokenService, TokenService>();
+        services.AddScoped<IAuthService, AuthService>();
+        services.AddScoped<IUserService, UserService>();
+        services.AddScoped<IAdminUserService, AdminUserService>();
         return services;
     }
-
 }

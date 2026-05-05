@@ -11,20 +11,23 @@ public static class ServiceExtensions
 {
     public static IServiceCollection AddDatabase(this IServiceCollection services, IConfiguration config)
     {
-        // LẤY CHUỖI KẾT NỐI ONLINE
-        var connectionString = config.GetConnectionString("DefaultConnection");
+        var connectionString = config.GetConnectionString("DefaultConnection")
+            ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
 
         services.AddDbContext<AppDbContext>(options =>
-            options.UseSqlServer(connectionString) // Sử dụng biến connectionString
+            options.UseSqlServer(
+                connectionString,
+                sqlOptions => sqlOptions.MigrationsAssembly("2123110233_LeDinhBang")
+            )
         );
         return services;
     }
 
     public static IServiceCollection AddRepositories(this IServiceCollection services)
     {
-        services.AddScoped<IProductRepository,   ProductRepository>();
-        services.AddScoped<ICategoryRepository,  CategoryRepository>();
-        services.AddScoped<IAuthorRepository,    AuthorRepository>();
+        services.AddScoped<IProductRepository, ProductRepository>();
+        services.AddScoped<ICategoryRepository, CategoryRepository>();
+        services.AddScoped<IAuthorRepository, AuthorRepository>();
         services.AddScoped<IPublisherRepository, PublisherRepository>();
         services.AddScoped<IInventoryRepository, InventoryRepository>();
         return services;
@@ -32,9 +35,9 @@ public static class ServiceExtensions
 
     public static IServiceCollection AddProductServices(this IServiceCollection services)
     {
-        services.AddScoped<IProductService,   ProductService>();
-        services.AddScoped<ICategoryService,  CategoryService>();
-        services.AddScoped<IAuthorService,    AuthorService>();
+        services.AddScoped<IProductService, ProductService>();
+        services.AddScoped<ICategoryService, CategoryService>();
+        services.AddScoped<IAuthorService, AuthorService>();
         services.AddScoped<IPublisherService, PublisherService>();
         return services;
     }

@@ -2,6 +2,7 @@ using BookStore.Application.DTOs.Product;
 using BookStore.Application.Interfaces;
 using BookStore.Domain.Entities;
 using BookStore.Domain.Interfaces;
+using BookStore.Infrastructure.Data;
 
 namespace BookStore.Application.Services;
 
@@ -11,17 +12,20 @@ public class ProductService : IProductService
     private readonly ICategoryRepository _categories;
     private readonly IPublisherRepository _publishers;
     private readonly IAuthorRepository _authors;
+    private readonly AppDbContext _db;
 
     public ProductService(
         IProductRepository products,
         ICategoryRepository categories,
         IPublisherRepository publishers,
-        IAuthorRepository authors)
+        IAuthorRepository authors,
+        AppDbContext db)
     {
         _products = products;
         _categories = categories;
         _publishers = publishers;
         _authors = authors;
+        _db = db;
     }
 
     public async Task<PagedResult<ProductListItemDto>> GetPagedAsync(ProductQueryParams query)
@@ -128,6 +132,7 @@ public class ProductService : IProductService
 
     public async Task<ProductDetailDto> UpdateAsync(Guid id, UpdateProductRequest req)
     {
+        // Dùng GetDetailAsync — KHÔNG AsNoTracking → EF tự track entity
         var product = await _products.GetDetailAsync(id)
             ?? throw new KeyNotFoundException($"Không tìm thấy sản phẩm Id: {id}");
 
@@ -140,6 +145,7 @@ public class ProductService : IProductService
         _ = await _publishers.GetByIdAsync(req.PublisherId)
             ?? throw new KeyNotFoundException("Nhà xuất bản không tồn tại.");
 
+        // Cập nhật các field thông thường
         product.CategoryId    = req.CategoryId;
         product.PublisherId   = req.PublisherId;
         product.Title         = req.Title.Trim();
@@ -157,42 +163,94 @@ public class ProductService : IProductService
         product.PublishedDate = req.PublishedDate;
         product.UpdatedAt     = DateTime.UtcNow;
 
-        // Cập nhật authors: xóa hết, thêm lại
-        product.ProductAuthors.Clear();
+        // ── Cập nhật Authors (Đồng bộ hóa để tránh lỗi Concurrency) ──
+        var newAuthorIds = req.Authors.Select(a => a.AuthorId).ToList();
+
+        // 1. Xóa các tác giả không còn trong danh sách mới (Xóa khỏi collection)
+        var authorsToRemove = product.ProductAuthors.Where(pa => !newAuthorIds.Contains(pa.AuthorId)).ToList();
+        foreach (var pa in authorsToRemove)
+        {
+            product.ProductAuthors.Remove(pa);
+        }
+
+        // 2. Cập nhật hoặc Thêm mới
         foreach (var a in req.Authors)
         {
-            _ = await _authors.GetByIdAsync(a.AuthorId)
-                ?? throw new KeyNotFoundException($"Tác giả Id={a.AuthorId} không tồn tại.");
-            product.ProductAuthors.Add(new ProductAuthor
+            var existingAuthor = product.ProductAuthors.FirstOrDefault(pa => pa.AuthorId == a.AuthorId);
+            if (existingAuthor != null)
             {
-                ProductId = product.Id,
-                AuthorId  = a.AuthorId,
-                Role      = a.Role
-            });
+                // Cập nhật
+                existingAuthor.Role = a.Role;
+            }
+            else
+            {
+                // Thêm mới
+                _ = await _authors.GetByIdAsync(a.AuthorId)
+                    ?? throw new KeyNotFoundException($"Tác giả Id={a.AuthorId} không tồn tại.");
+
+                product.ProductAuthors.Add(new ProductAuthor
+                {
+                    ProductId = product.Id,
+                    AuthorId  = a.AuthorId,
+                    Role      = a.Role
+                });
+            }
         }
 
-        // Cập nhật images: xóa hết, thêm lại
-        product.Images.Clear();
-        foreach (var img in req.Images)
+        // ── Cập nhật Images (Cách chuẩn xác nhất để tránh lỗi State) ──
+        // 1. Đánh dấu xóa các ảnh cũ. Tuyệt đối KHÔNG dùng .Clear() ở đây
+        // vì Clear() sẽ làm thay đổi Foreign Key (ProductId) của các ảnh cũ thành null, 
+        // khiến EF Core hiểu lầm là đang "Sửa" (Modified) thay vì "Xóa" (Deleted).
+        if (product.Images.Any())
         {
-            product.Images.Add(new ProductImage
-            {
-                ProductId    = product.Id,
-                ImageUrl     = img.ImageUrl,
-                AltText      = img.AltText,
-                IsPrimary    = img.IsPrimary,
-                DisplayOrder = img.DisplayOrder
-            });
+            _db.Set<ProductImage>().RemoveRange(product.Images);
         }
 
+        // 2. Thêm ảnh mới vào danh sách. Collection sẽ chứa cả ảnh đã đánh dấu xóa và ảnh mới,
+        // EF Core sẽ tự động phân loại Deleted và Added khi SaveChanges.
+        if (req.Images != null && req.Images.Any())
+        {
+            foreach (var img in req.Images)
+            {
+                var newImg = new ProductImage
+                {
+                    ProductId    = product.Id,
+                    ImageUrl     = img.ImageUrl,
+                    AltText      = img.AltText,
+                    IsPrimary    = img.IsPrimary,
+                    DisplayOrder = img.DisplayOrder
+                };
+                
+                product.Images.Add(newImg);
+                
+                // [CỰC KỲ QUAN TRỌNG]
+                // Vì ProductImage kế thừa BaseEntity (có sẵn Id = Guid.NewGuid()),
+                // EF Core thấy Id != rỗng nên sẽ đoán nhầm đây là thực thể đã tồn tại và set state = Modified.
+                // Ta phải ÉP CỨNG state = Added để EF Core phát sinh lệnh INSERT thay vì UPDATE.
+                _db.Entry(newImg).State = Microsoft.EntityFrameworkCore.EntityState.Added;
+            }
+        }
+
+        // Bắt buộc gọi Update() để Repository đánh dấu State = Modified (theo cấu trúc Repo hiện tại)
         _products.Update(product);
-        await _products.SaveChangesAsync();
+
+        try
+        {
+            await _products.SaveChangesAsync();
+        }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException ex)
+        {
+            var entry = ex.Entries.FirstOrDefault();
+            var entityName = entry?.Entity.GetType().Name ?? "Unknown";
+            throw new Exception($"Lỗi CSDL trên thực thể: {entityName}. Trạng thái: {entry?.State}. Chi tiết: {ex.Message}");
+        }
+
         return await GetByIdAsync(product.Id);
     }
 
     public async Task DeleteAsync(Guid id)
     {
-        var product = await _products.GetByIdAsync(id)
+        var product = await _products.GetDetailAsync(id)
             ?? throw new KeyNotFoundException($"Không tìm thấy sản phẩm Id: {id}");
         // Soft delete
         product.IsActive  = false;
@@ -246,7 +304,9 @@ public class ProductService : IProductService
             p.Category?.Name ?? "",
             p.ProductAuthors.Select(pa => pa.Author?.Name ?? ""),
             p.Inventory?.QtyActual > 0,
+            p.Inventory?.QtyAvailable ?? 0,
             p.IsFeatured,
+            p.IsActive,
             p.CreatedAt
         );
     }
@@ -256,14 +316,19 @@ public class ProductService : IProductService
         var discount = p.OriginalPrice > 0
             ? (int)Math.Round((p.OriginalPrice - p.SalePrice) / p.OriginalPrice * 100)
             : 0;
+
         return new ProductDetailDto(
             p.Id, p.Title, p.Slug, p.Isbn,
             p.PageCount, p.WeightGram, p.Language, p.CoverType.ToString(),
             p.OriginalPrice, p.SalePrice, discount,
             p.Description, p.IsActive, p.IsFeatured, p.PublishedDate,
-            new CategorySummaryDto(p.Category.Id, p.Category.Name, p.Category.Slug),
-            new PublisherSummaryDto(p.Publisher.Id, p.Publisher.Name, p.Publisher.Country),
-            p.ProductAuthors.Select(pa => new ProductAuthorDto(pa.AuthorId, pa.Author?.Name ?? "", pa.Role, pa.Author?.AvatarUrl)),
+            p.Category != null 
+                ? new CategorySummaryDto(p.Category.Id, p.Category.Name, p.Category.Slug)
+                : new CategorySummaryDto(Guid.Empty, "N/A", ""),
+            p.Publisher != null
+                ? new PublisherSummaryDto(p.Publisher.Id, p.Publisher.Name, p.Publisher.Country)
+                : new PublisherSummaryDto(Guid.Empty, "N/A", ""),
+            p.ProductAuthors.Select(pa => new ProductAuthorDto(pa.AuthorId, pa.Author?.Name ?? "N/A", pa.Role, pa.Author?.AvatarUrl)),
             p.Images.OrderBy(i => i.DisplayOrder).Select(i => new ProductImageDto(i.Id, i.ImageUrl, i.AltText, i.IsPrimary, i.DisplayOrder)),
             p.Inventory == null ? null : MapInventory(p.Inventory),
             p.CreatedAt, p.UpdatedAt

@@ -109,6 +109,13 @@ public class UsersController : ControllerBase
         return Ok(result);
     }
 
-    private Guid GetCurrentUserId() =>
-        Guid.Parse(User.FindFirstValue(JwtRegisteredClaimNames.Sub)!);
+    private Guid GetCurrentUserId()
+    {
+        var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue(JwtRegisteredClaimNames.Sub);
+        if (string.IsNullOrEmpty(userIdClaim))
+        {
+            throw new UnauthorizedAccessException("Không tìm thấy thông tin người dùng trong Token.");
+        }
+        return Guid.Parse(userIdClaim);
+    }
 }

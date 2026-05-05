@@ -4,17 +4,17 @@ using Microsoft.EntityFrameworkCore;
 
 namespace BookStore.Infrastructure.Data;
 
-public class AppDbContext : DbContext
+public partial class AppDbContext : DbContext   // ← thêm "partial" vào đây
 {
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
 
-    public DbSet<Category>       Categories       => Set<Category>();
-    public DbSet<Publisher>      Publishers       => Set<Publisher>();
-    public DbSet<Author>         Authors          => Set<Author>();
-    public DbSet<Product>        Products         => Set<Product>();
-    public DbSet<ProductAuthor>  ProductAuthors   => Set<ProductAuthor>();
-    public DbSet<ProductImage>   ProductImages    => Set<ProductImage>();
-    public DbSet<Inventory>      Inventories      => Set<Inventory>();
+    public DbSet<Category> Categories => Set<Category>();
+    public DbSet<Publisher> Publishers => Set<Publisher>();
+    public DbSet<Author> Authors => Set<Author>();
+    public DbSet<Product> Products => Set<Product>();
+    public DbSet<ProductAuthor> ProductAuthors => Set<ProductAuthor>();
+    public DbSet<ProductImage> ProductImages => Set<ProductImage>();
+    public DbSet<Inventory> Inventories => Set<Inventory>();
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
@@ -77,7 +77,8 @@ public class AppDbContext : DbContext
 
             e.HasOne(x => x.Product)
              .WithMany(x => x.ProductAuthors)
-             .HasForeignKey(x => x.ProductId);
+             .HasForeignKey(x => x.ProductId)
+             .OnDelete(DeleteBehavior.Cascade);
 
             e.HasOne(x => x.Author)
              .WithMany(x => x.ProductAuthors)
@@ -102,7 +103,7 @@ public class AppDbContext : DbContext
         {
             e.HasKey(x => x.Id);
             e.HasIndex(x => x.ProductId).IsUnique();
-            e.Ignore(x => x.QtyActual);     // computed property
+            e.Ignore(x => x.QtyActual);
             e.Ignore(x => x.IsLowStock);
             e.Ignore(x => x.IsOutOfStock);
 
@@ -111,6 +112,13 @@ public class AppDbContext : DbContext
              .HasForeignKey<Inventory>(x => x.ProductId)
              .OnDelete(DeleteBehavior.Cascade);
         });
+
+        // ── Gọi config của các module khác ────────────────
+        ConfigureCart(mb);
+        ConfigureOrder(mb);
+        ConfigurePromotion(mb);
+        ConfigureReview(mb);
+        ConfigureWarehouse(mb);
 
         // ── Global query filters ───────────────────────────
         mb.Entity<Product>().HasQueryFilter(p => p.IsActive);

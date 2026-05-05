@@ -1,5 +1,8 @@
+using System.Text.Json.Serialization;
+
 namespace BookStore.Domain.Enums;
 
+[JsonConverter(typeof(JsonStringEnumConverter))]
 public enum Gender
 {
     Male,
@@ -7,6 +10,7 @@ public enum Gender
     Other,
     Unspecified
 }
+[JsonConverter(typeof(JsonStringEnumConverter))]
 public enum UserRole
 {
     Customer,
@@ -17,6 +21,7 @@ public enum UserRole
     SuperAdmin
 }
 
+[JsonConverter(typeof(JsonStringEnumConverter))]
 public enum LoginProvider
 {
     Local,      // Email + Password
@@ -25,6 +30,7 @@ public enum LoginProvider
     Phone       // SĐT + OTP
 }
 
+[JsonConverter(typeof(JsonStringEnumConverter))]
 public enum OtpPurpose
 {
     EmailVerification,

@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace _2123110233_LeDinhBang.Migrations.AuthDb
 {
     /// <inheritdoc />
-    public partial class InitialAuth : Migration
+    public partial class AddAuthTables : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -21,7 +21,7 @@ namespace _2123110233_LeDinhBang.Migrations.AuthDb
                     FullName = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
                     Phone = table.Column<string>(type: "nvarchar(15)", maxLength: 15, nullable: true),
                     DateOfBirth = table.Column<DateTime>(type: "datetime2", nullable: true),
-                    Gender = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    Gender = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false),
                     AvatarUrl = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
                     IsActive = table.Column<bool>(type: "bit", nullable: false),
                     EmailVerified = table.Column<bool>(type: "bit", nullable: false),
@@ -44,7 +44,7 @@ namespace _2123110233_LeDinhBang.Migrations.AuthDb
                 {
                     Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     UserId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    Provider = table.Column<string>(type: "nvarchar(450)", nullable: false),
+                    Provider = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
                     ProviderKey = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
                     ProviderDisplayName = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: true),
                     AccessToken = table.Column<string>(type: "nvarchar(max)", nullable: true),
@@ -68,7 +68,7 @@ namespace _2123110233_LeDinhBang.Migrations.AuthDb
                 {
                     Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     UserId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    Purpose = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    Purpose = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
                     Code = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: false),
                     Target = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: true),
                     IsUsed = table.Column<bool>(type: "bit", nullable: false),
@@ -120,7 +120,7 @@ namespace _2123110233_LeDinhBang.Migrations.AuthDb
                 columns: table => new
                 {
                     UserId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    Role = table.Column<string>(type: "nvarchar(450)", nullable: false),
+                    Role = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
                     AssignedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
                     AssignedBy = table.Column<Guid>(type: "uniqueidentifier", nullable: true)
                 },
@@ -186,14 +186,14 @@ namespace _2123110233_LeDinhBang.Migrations.AuthDb
                 table: "Users",
                 column: "Email",
                 unique: true,
-                filter: "email IS NOT NULL");
+                filter: "[Email] IS NOT NULL");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Users_Phone",
                 table: "Users",
                 column: "Phone",
                 unique: true,
-                filter: "phone IS NOT NULL");
+                filter: "[Phone] IS NOT NULL");
 
             migrationBuilder.CreateIndex(
                 name: "IX_UserSessions_RefreshToken",

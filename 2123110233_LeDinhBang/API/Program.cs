@@ -2,11 +2,13 @@ using BookStore.API.Extensions;
 using BookStore.Application.Interfaces;
 using BookStore.Infrastructure.Data;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using System.Text;
+using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -22,7 +24,13 @@ builder.Services.AddRepositories();
 builder.Services.AddAuthRepositories();
 builder.Services.AddProductServices();
 builder.Services.AddAuthServices();
-
+builder.Services.AddCartModule();
+builder.Services.AddOrderModule();
+builder.Services.AddPromotionModule();
+builder.Services.AddReviewModule();
+builder.Services.AddWarehouseModule();
+builder.Services.AddCloudinaryModule(builder.Configuration);
+builder.Services.Configure<FormOptions>(o => o.MultipartBodyLengthLimit = 5 * 1024 * 1024);
 // ── Auth (JWT) ────────────────────────────────────────────
 var jwtKey = builder.Configuration["Jwt:Key"] ?? "b8f9a2c4d6e8b1a3f5c7d9e0b2a4c6e8f0a1b3c5d7e9f1a2b4c6";
 var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "BookStoreAPI";
@@ -48,7 +56,9 @@ builder.Services.AddControllers()
     .AddJsonOptions(opt =>
     {
         opt.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
-        opt.JsonSerializerOptions.DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull;
+        opt.JsonSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
+        opt.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
+        opt.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
     });
 
 builder.Services.AddEndpointsApiExplorer();

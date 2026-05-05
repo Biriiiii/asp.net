@@ -6,7 +6,6 @@ using Microsoft.EntityFrameworkCore;
 namespace BookStore.Infrastructure.Repositories;
 
 // ── Generic base ──────────────────────────────────────────
-
 public class Repository<T> : IRepository<T> where T : BaseEntity
 {
     protected readonly AppDbContext _db;
@@ -19,7 +18,7 @@ public class Repository<T> : IRepository<T> where T : BaseEntity
     }
 
     public virtual async Task<T?> GetByIdAsync(Guid id) =>
-        await _set.FindAsync(id);
+        await _set.FindAsync(id);   // FindAsync dùng primary key → luôn tracked
 
     public virtual async Task<IEnumerable<T>> GetAllAsync() =>
         await _set.AsNoTracking().ToListAsync();
@@ -27,18 +26,28 @@ public class Repository<T> : IRepository<T> where T : BaseEntity
     public virtual async Task AddAsync(T entity) =>
         await _set.AddAsync(entity);
 
-    public virtual void Update(T entity) =>
-        _set.Update(entity);
+    public virtual void Update(T entity)
+    {
+        // Nếu entity chưa được track → attach trước rồi mark Modified
+        var entry = _db.Entry(entity);
+        if (entry.State == EntityState.Detached)
+            _set.Attach(entity);
+        entry.State = EntityState.Modified;
+    }
 
-    public virtual void Delete(T entity) =>
+    public virtual void Delete(T entity)
+    {
+        var entry = _db.Entry(entity);
+        if (entry.State == EntityState.Detached)
+            _set.Attach(entity);
         _set.Remove(entity);
+    }
 
     public async Task<int> SaveChangesAsync() =>
         await _db.SaveChangesAsync();
 }
 
 // ── ProductRepository ─────────────────────────────────────
-
 public class ProductRepository : Repository<Product>, IProductRepository
 {
     public ProductRepository(AppDbContext db) : base(db) { }
@@ -52,18 +61,20 @@ public class ProductRepository : Repository<Product>, IProductRepository
             .Include(p => p.Inventory)
             .FirstOrDefaultAsync(p => p.Slug == slug);
 
+    // ← QUAN TRỌNG: GetDetailAsync dùng tracking (không AsNoTracking)
+    // để Update sau đó không bị ConcurrencyException
     public async Task<Product?> GetDetailAsync(Guid id) =>
-        await _db.Products
+        await _db.Products.IgnoreQueryFilters()
             .Include(p => p.Category)
             .Include(p => p.Publisher)
             .Include(p => p.ProductAuthors).ThenInclude(pa => pa.Author)
             .Include(p => p.Images)
             .Include(p => p.Inventory)
-            .FirstOrDefaultAsync(p => p.Id == id);
+            .FirstOrDefaultAsync(p => p.Id == id);  // Không có AsNoTracking → EF tự track
 
     public async Task<(IEnumerable<Product> Items, int Total)> GetPagedAsync(ProductFilter f)
     {
-        var query = _db.Products
+        var query = _db.Products.IgnoreQueryFilters()
             .Include(p => p.Category)
             .Include(p => p.Publisher)
             .Include(p => p.ProductAuthors).ThenInclude(pa => pa.Author)
@@ -71,7 +82,6 @@ public class ProductRepository : Repository<Product>, IProductRepository
             .Include(p => p.Inventory)
             .AsQueryable();
 
-        // ── Filters ──
         if (!string.IsNullOrWhiteSpace(f.Keyword))
         {
             var kw = f.Keyword.Trim().ToLower();
@@ -100,28 +110,28 @@ public class ProductRepository : Repository<Product>, IProductRepository
             query = query.Where(p => p.Language == f.Language);
 
         if (f.IsActive.HasValue)
-            query = query.IgnoreQueryFilters().Where(p => p.IsActive == f.IsActive.Value);
+            query = query.Where(p => p.IsActive == f.IsActive.Value);
 
         if (f.IsFeatured.HasValue)
             query = query.Where(p => p.IsFeatured == f.IsFeatured.Value);
 
         if (f.InStockOnly == true)
-            query = query.Where(p => p.Inventory != null && p.Inventory.QtyAvailable > p.Inventory.QtyReserved);
+            query = query.Where(p => p.Inventory != null &&
+                p.Inventory.QtyAvailable > p.Inventory.QtyReserved);
 
-        // ── Sort ──
         query = f.SortBy switch
         {
-            "price_asc"   => query.OrderBy(p => p.SalePrice),
-            "price_desc"  => query.OrderByDescending(p => p.SalePrice),
-            "bestseller"  => query.OrderByDescending(p => p.Inventory != null ? p.Inventory.QtySold : 0),
-            _             => query.OrderByDescending(p => p.CreatedAt)  // newest (default)
+            "price_asc"  => query.OrderBy(p => p.SalePrice),
+            "price_desc" => query.OrderByDescending(p => p.SalePrice),
+            "bestseller" => query.OrderByDescending(p => p.Inventory != null ? p.Inventory.QtySold : 0),
+            _            => query.OrderByDescending(p => p.CreatedAt)
         };
 
         var total = await query.CountAsync();
         var items = await query
             .Skip((f.Page - 1) * f.PageSize)
             .Take(f.PageSize)
-            .AsNoTracking()
+            .AsNoTracking()   // List dùng AsNoTracking vì chỉ đọc
             .ToListAsync();
 
         return (items, total);
@@ -133,7 +143,6 @@ public class ProductRepository : Repository<Product>, IProductRepository
 }
 
 // ── CategoryRepository ────────────────────────────────────
-
 public class CategoryRepository : Repository<Category>, ICategoryRepository
 {
     public CategoryRepository(AppDbContext db) : base(db) { }
@@ -169,7 +178,6 @@ public class CategoryRepository : Repository<Category>, ICategoryRepository
 }
 
 // ── AuthorRepository ──────────────────────────────────────
-
 public class AuthorRepository : Repository<Author>, IAuthorRepository
 {
     public AuthorRepository(AppDbContext db) : base(db) { }
@@ -183,7 +191,6 @@ public class AuthorRepository : Repository<Author>, IAuthorRepository
 }
 
 // ── PublisherRepository ───────────────────────────────────
-
 public class PublisherRepository : Repository<Publisher>, IPublisherRepository
 {
     public PublisherRepository(AppDbContext db) : base(db) { }
@@ -197,7 +204,6 @@ public class PublisherRepository : Repository<Publisher>, IPublisherRepository
 }
 
 // ── InventoryRepository ───────────────────────────────────
-
 public class InventoryRepository : Repository<Inventory>, IInventoryRepository
 {
     public InventoryRepository(AppDbContext db) : base(db) { }

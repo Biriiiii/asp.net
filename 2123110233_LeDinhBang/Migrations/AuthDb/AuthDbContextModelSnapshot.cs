@@ -36,7 +36,8 @@ namespace _2123110233_LeDinhBang.Migrations.AuthDb
 
                     b.Property<string>("Provider")
                         .IsRequired()
-                        .HasColumnType("nvarchar(450)");
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
 
                     b.Property<string>("ProviderDisplayName")
                         .HasMaxLength(200)
@@ -88,7 +89,8 @@ namespace _2123110233_LeDinhBang.Migrations.AuthDb
 
                     b.Property<string>("Purpose")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
 
                     b.Property<string>("Target")
                         .HasMaxLength(200)
@@ -140,7 +142,8 @@ namespace _2123110233_LeDinhBang.Migrations.AuthDb
 
                     b.Property<string>("Gender")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
@@ -171,11 +174,11 @@ namespace _2123110233_LeDinhBang.Migrations.AuthDb
 
                     b.HasIndex("Email")
                         .IsUnique()
-                        .HasFilter("email IS NOT NULL");
+                        .HasFilter("[Email] IS NOT NULL");
 
                     b.HasIndex("Phone")
                         .IsUnique()
-                        .HasFilter("phone IS NOT NULL");
+                        .HasFilter("[Phone] IS NOT NULL");
 
                     b.ToTable("Users");
                 });
@@ -241,7 +244,8 @@ namespace _2123110233_LeDinhBang.Migrations.AuthDb
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("Role")
-                        .HasColumnType("nvarchar(450)");
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
 
                     b.Property<DateTime>("AssignedAt")
                         .HasColumnType("datetime2");

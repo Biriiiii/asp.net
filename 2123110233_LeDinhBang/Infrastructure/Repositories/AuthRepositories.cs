@@ -17,7 +17,9 @@ public class UserRepository : IUserRepository
         await _db.Users.FindAsync(id);
 
     public async Task<User?> GetByEmailAsync(string email) =>
-        await _db.Users.FirstOrDefaultAsync(u => u.Email == email.ToLower());
+        await _db.Users
+            .Include(u => u.UserRoles)
+            .FirstOrDefaultAsync(u => u.Email == email.ToLower());
 
     public async Task<User?> GetByPhoneAsync(string phone) =>
         await _db.Users.FirstOrDefaultAsync(u => u.Phone == phone);

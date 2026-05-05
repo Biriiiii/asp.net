@@ -17,7 +17,9 @@ public record ProductListItemDto(
     string CategoryName,
     IEnumerable<string> AuthorNames,
     bool InStock,
+    int QtyAvailable,
     bool IsFeatured,
+    bool IsActive,
     DateTime CreatedAt
 );
 
