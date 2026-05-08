@@ -2,6 +2,7 @@
 // FILE: Review/API/Controllers/ReviewsController.cs
 // ═══════════════════════════════════════════════════════════
 using BookStore.Application.DTOs.Review;
+using BookStore.Application.DTOs.Promotion;
 using BookStore.Application.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;

@@ -1,4 +1,5 @@
 using BookStore.Application.DTOs.Review;
+using BookStore.Application.DTOs.Promotion;
 using BookStore.Application.Interfaces;
 using BookStore.Domain.Entities;
 using BookStore.Domain.Interfaces;
@@ -34,7 +35,8 @@ public class ReviewService : IReviewService
         if (await _reviews.GetByUserAndProductAsync(userId, req.ProductId) != null)
             throw new InvalidOperationException("Bạn đã đánh giá sản phẩm này rồi.");
 
-        if (req.ImageUrls.Count > 5)
+        var images = req.Images?.ToList() ?? new List<string>();
+        if (images.Count > 5)
             throw new InvalidOperationException("Tối đa 5 ảnh mỗi đánh giá.");
 
         var review = new Review
@@ -43,10 +45,10 @@ public class ReviewService : IReviewService
             Rating = req.Rating, Title = req.Title?.Trim(), Content = req.Content?.Trim()
         };
 
-        for (int i = 0; i < req.ImageUrls.Count; i++)
+        for (int i = 0; i < images.Count; i++)
             review.Images.Add(new ReviewImage
             {
-                ReviewId = review.Id, ImageUrl = req.ImageUrls[i], DisplayOrder = i
+                ReviewId = review.Id, ImageUrl = images[i], DisplayOrder = i
             });
 
         await _reviews.AddAsync(review);

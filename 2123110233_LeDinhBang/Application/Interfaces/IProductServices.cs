@@ -11,6 +11,8 @@ public interface IProductService
     Task<ProductDetailDto> UpdateAsync(Guid id, UpdateProductRequest request);
     Task DeleteAsync(Guid id);
     Task<InventoryDto> UpdateInventoryAsync(Guid productId, UpdateInventoryRequest request);
+    Task<byte[]> ExportExcelAsync(ProductQueryParams query);
+    Task<ProductExcelImportResultDto> ImportExcelAsync(Stream fileStream);
 }
 
 public interface ICategoryService

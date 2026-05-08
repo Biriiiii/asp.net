@@ -22,6 +22,35 @@ public class ProductsController : ControllerBase
         return Ok(result);
     }
 
+    /// <summary>Export danh sách sản phẩm ra file Excel</summary>
+    [HttpGet("export-excel")]
+    [Authorize(Roles = "Admin,ContentManager,Staff")]
+    [ProducesResponseType(typeof(FileContentResult), 200)]
+    public async Task<IActionResult> ExportExcel([FromQuery] ProductQueryParams query)
+    {
+        var bytes = await _service.ExportExcelAsync(query);
+        var fileName = $"products-{DateTime.UtcNow:yyyyMMddHHmmss}.xlsx";
+        return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
+    }
+
+    /// <summary>Import sản phẩm từ file Excel (.xlsx). Có Id thì cập nhật, không có Id thì tạo mới theo Slug.</summary>
+    [HttpPost("import-excel")]
+    [HttpPut("import-excel")]
+    [Authorize(Roles = "Admin,ContentManager")]
+    [Consumes("multipart/form-data")]
+    [ProducesResponseType(typeof(ProductExcelImportResultDto), 200)]
+    public async Task<IActionResult> ImportExcel([FromForm] IFormFile file)
+    {
+        if (file == null || file.Length == 0)
+        {
+            return BadRequest(new { message = "Vui lòng chọn file Excel." });
+        }
+
+        await using var stream = file.OpenReadStream();
+        var result = await _service.ImportExcelAsync(stream);
+        return Ok(result);
+    }
+
     /// <summary>Lấy chi tiết sản phẩm theo Id</summary>
     [HttpGet("{id:guid}")]
     [ProducesResponseType(typeof(ProductDetailDto), 200)]

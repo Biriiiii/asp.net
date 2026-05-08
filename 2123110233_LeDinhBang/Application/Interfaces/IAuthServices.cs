@@ -67,7 +67,13 @@ public interface IEmailService
 {
     Task SendEmailVerificationAsync(string toEmail, string fullName, string token);
     Task SendPasswordResetAsync(string toEmail, string fullName, string token);
-    Task SendOrderConfirmationAsync(string toEmail, string fullName, string orderCode);
+    Task SendOrderConfirmationAsync(
+        string toEmail,
+        string fullName,
+        string orderCode,
+        string paymentStatus,
+        decimal totalAmount,
+        IEnumerable<string> orderItems);
 }
 
 public interface ISmsService

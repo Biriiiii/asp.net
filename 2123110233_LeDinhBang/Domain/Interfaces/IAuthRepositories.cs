@@ -40,6 +40,7 @@ public interface IExternalLoginRepository
 public interface IOtpRepository
 {
     Task<OtpCode?> GetLatestAsync(Guid userId, OtpPurpose purpose);
+    Task<OtpCode?> GetValidByCodeAsync(string code, OtpPurpose purpose);
     Task AddAsync(OtpCode otp);
     void Update(OtpCode otp);
     Task InvalidatePreviousAsync(Guid userId, OtpPurpose purpose);

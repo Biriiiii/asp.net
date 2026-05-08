@@ -53,7 +53,7 @@ public class ProductRepository : Repository<Product>, IProductRepository
     public ProductRepository(AppDbContext db) : base(db) { }
 
     public async Task<Product?> GetBySlugAsync(string slug) =>
-        await _db.Products
+        await _db.Products.IgnoreQueryFilters()
             .Include(p => p.Category)
             .Include(p => p.Publisher)
             .Include(p => p.ProductAuthors).ThenInclude(pa => pa.Author)

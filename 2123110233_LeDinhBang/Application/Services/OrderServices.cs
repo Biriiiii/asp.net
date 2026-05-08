@@ -22,6 +22,9 @@ public class OrderService : IOrderService
     private readonly IShippingFeeService      _shippingFee;
     private readonly IPaymentGatewayService   _payment;
     private readonly IOrderCodeGenerator      _codeGen;
+    private readonly IUserRepository          _users;
+    private readonly IEmailService            _email;
+    private readonly ILogger<OrderService>    _logger;
     private readonly AppDbContext             _db;
 
     public OrderService(
@@ -30,12 +33,16 @@ public class OrderService : IOrderService
         IFlashSaleRepository flashSales,
         IInventoryReserveService inventory, IShippingFeeService shippingFee,
         IPaymentGatewayService payment, IOrderCodeGenerator codeGen,
-        AppDbContext db)
+        IUserRepository users, IEmailService email,
+        AppDbContext db,
+        ILogger<OrderService> logger)
     {
         _orders = orders; _refunds = refunds; _carts = carts;
         _vouchers = vouchers; _flashSales = flashSales;
         _inventory = inventory;
         _shippingFee = shippingFee; _payment = payment; _codeGen = codeGen;
+        _users = users; _email = email;
+        _logger = logger;
         _db = db;
     }
 
@@ -171,6 +178,7 @@ public class OrderService : IOrderService
         await _orders.SaveChangesAsync();
         await _carts.RemoveItemsAsync(cart.Id, cartItems.Select(i => i.Id));
         await _carts.SaveChangesAsync();
+        await TrySendOrderEmailAsync(order);
 
         return await GetDetailAsync(order.Id);
     }
@@ -207,23 +215,103 @@ public class OrderService : IOrderService
     public async Task HandlePaymentCallbackAsync(PaymentCallbackRequest cb)
     {
         if (!_payment.VerifyCallback(cb)) throw new InvalidOperationException("Chữ ký không hợp lệ.");
-        var order = await _db.Orders.Include(o => o.Payments).FirstOrDefaultAsync(o => o.OrderCode == cb.OrderCode) ?? throw new KeyNotFoundException("Không tìm thấy đơn hàng.");
+        var order = await _db.Orders
+            .Include(o => o.Payments)
+            .Include(o => o.Items)
+            .FirstOrDefaultAsync(o => o.OrderCode == cb.OrderCode)
+            ?? throw new KeyNotFoundException("Không tìm thấy đơn hàng.");
         if (order.PaymentStatus == PaymentStatus.Paid) return;
-        var payment = order.Payments.FirstOrDefault(p => p.Provider == cb.Provider.ToLower());
+        
+        // Truy vấn trực tiếp vào bảng Payments thay vì dùng Include để tránh lỗi mất dấu vết
+        var payment = await _db.Set<Payment>().FirstOrDefaultAsync(p => p.OrderId == order.Id && p.Provider == "vnpay");
         if (payment == null) return;
 
         if (cb.Status == "success")
         {
+            var oldStatus = order.Status;
             payment.Status = PaymentStatus.Paid;
             payment.TransactionId = cb.TransactionId;
             payment.PaidAt = DateTime.UtcNow;
             order.Status = OrderStatus.Confirmed;
             order.PaymentStatus = PaymentStatus.Paid;
             order.ConfirmedAt = DateTime.UtcNow;
-            order.StatusLogs.Add(new OrderStatusLog { FromStatus = order.Status, ToStatus = OrderStatus.Confirmed, Note = "Thanh toán thành công" });
+            order.StatusLogs.Add(new OrderStatusLog { FromStatus = oldStatus, ToStatus = OrderStatus.Confirmed, Note = "Thanh toán thành công" });
         }
         else payment.Status = PaymentStatus.Failed;
+        
         await _db.SaveChangesAsync();
+
+        if (cb.Status == "success")
+        {
+            // Bắt buộc nạp lại (reload) từ DB để đảm bảo trạng thái mới nhất được áp dụng vào Email
+            await _db.Entry(order).ReloadAsync();
+            await TrySendOrderEmailAsync(order);
+        }
+    }
+
+    public async Task MarkPaymentSucceededAsync(string orderCode, string? transactionId = null)
+    {
+        var order = await _db.Orders
+            .Include(o => o.Payments)
+            .Include(o => o.Items)
+            .FirstOrDefaultAsync(o => o.OrderCode == orderCode)
+            ?? throw new KeyNotFoundException("Không tìm thấy đơn hàng.");
+
+        await MarkPaymentSucceededInternalAsync(order, transactionId);
+    }
+
+    public async Task MarkPaymentSucceededByOrderIdAsync(Guid orderId, string? transactionId = null)
+    {
+        var order = await _db.Orders
+            .Include(o => o.Payments)
+            .Include(o => o.Items)
+            .FirstOrDefaultAsync(o => o.Id == orderId)
+            ?? throw new KeyNotFoundException("Không tìm thấy đơn hàng.");
+
+        await MarkPaymentSucceededInternalAsync(order, transactionId);
+    }
+
+    private async Task MarkPaymentSucceededInternalAsync(Order order, string? transactionId)
+    {
+        if (order.PaymentStatus == PaymentStatus.Paid)
+        {
+            return;
+        }
+
+        var payment = order.Payments.FirstOrDefault();
+        if (payment != null)
+        {
+            payment.Status = PaymentStatus.Paid;
+            payment.TransactionId = string.IsNullOrWhiteSpace(transactionId) ? payment.TransactionId : transactionId;
+            payment.PaidAt = DateTime.UtcNow;
+        }
+
+        var oldStatus = order.Status;
+        order.Status = OrderStatus.Confirmed;
+        order.PaymentStatus = PaymentStatus.Paid;
+        order.ConfirmedAt = DateTime.UtcNow;
+        order.StatusLogs.Add(new OrderStatusLog
+        {
+            FromStatus = oldStatus,
+            ToStatus = OrderStatus.Confirmed,
+            Note = "Thanh toán thành công"
+        });
+
+        await _db.SaveChangesAsync();
+        await TrySendOrderEmailAsync(order);
+    }
+
+    public async Task<Guid?> GetOrderIdByCodeAsync(string orderCode)
+    {
+        if (string.IsNullOrWhiteSpace(orderCode))
+        {
+            return null;
+        }
+
+        return await _db.Orders
+            .Where(o => o.OrderCode == orderCode)
+            .Select(o => (Guid?)o.Id)
+            .FirstOrDefaultAsync();
     }
 
     public async Task<PagedResult<OrderListItemDto>> GetAllAsync(OrderQueryParams q)
@@ -363,6 +451,42 @@ public class OrderService : IOrderService
     private static OrderListItemDto MapListItem(Order o) => new(o.Id, o.OrderCode, o.Status.ToString(), o.ShippingRecipientName, o.ShippingPhone, o.PaymentMethod.ToString(), o.PaymentStatus.ToString(), o.Items.Sum(i => i.Quantity), o.TotalAmount, o.CreatedAt, o.ConfirmedAt);
     private static OrderDetailDto MapDetail(Order o) => new(o.Id, o.OrderCode, o.Status.ToString(), o.CanCancel, new ShippingAddressDto(o.ShippingRecipientName, o.ShippingPhone, o.ShippingProvince, o.ShippingDistrict, o.ShippingWard, o.ShippingAddressLine), o.ShippingMethod.ToString(), o.ShippingFee, o.Subtotal, o.DiscountAmount, o.TotalAmount, o.PaymentMethod.ToString(), o.PaymentStatus.ToString(), o.Note, o.CancelReason, o.Items.Select(i => new OrderItemDto(i.Id, i.ProductId, i.SnapshotTitle, i.SnapshotIsbn, i.SnapshotCoverUrl, i.SnapshotAuthorNames, i.Quantity, i.UnitPrice, i.DiscountAmount, i.LineTotal)), o.Payments.Select(p => new PaymentDto(p.Id, p.Provider, p.TransactionId, p.Amount, p.Status.ToString(), p.FailureReason, p.PaidAt, p.ExpiredAt, p.CreatedAt)), o.Shipments.Select(s => new ShipmentDto(s.Id, s.Carrier, s.TrackingNumber, s.Status.ToString(), s.ShippedAt, s.EstimatedDelivery, s.DeliveredAt, null)).FirstOrDefault(), o.StatusLogs.Select(l => new OrderStatusLogDto(l.FromStatus.ToString(), l.ToStatus.ToString(), l.Note, l.CreatedAt)), o.RefundRequest == null ? null : MapRefund(o.RefundRequest), o.CreatedAt, o.ConfirmedAt, o.CancelledAt);
     private static RefundDto MapRefund(RefundRequest r) => new(r.Id, r.Amount, r.Reason, r.Status.ToString(), r.AdminNote, r.TransactionId, r.ProcessedAt, r.CreatedAt);
+
+    private async Task SendOrderEmailAsync(Order order)
+    {
+        var user = await _users.GetByIdAsync(order.UserId);
+        if (user == null || string.IsNullOrWhiteSpace(user.Email))
+        {
+            return;
+        }
+
+        var paymentStatus = order.PaymentStatus == PaymentStatus.Paid
+            ? "Đã thanh toán"
+            : "Chưa thanh toán";
+
+        var orderItems = order.Items.Select(i =>
+            $"{i.SnapshotTitle} x{i.Quantity} - {i.LineTotal:N0} VND");
+
+        await _email.SendOrderConfirmationAsync(
+            user.Email,
+            user.FullName,
+            order.OrderCode,
+            paymentStatus,
+            order.TotalAmount,
+            orderItems);
+    }
+
+    private async Task TrySendOrderEmailAsync(Order order)
+    {
+        try
+        {
+            await SendOrderEmailAsync(order);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Không gửi được email xác nhận đơn hàng {OrderCode}.", order.OrderCode);
+        }
+    }
 }
 
 public class OrderCodeGenerator : IOrderCodeGenerator

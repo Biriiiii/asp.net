@@ -15,6 +15,7 @@ public record ProductListItemDto(
     int DiscountPercent,
     string? PrimaryImageUrl,
     string CategoryName,
+    string? PublisherName, // Đã thêm
     IEnumerable<string> AuthorNames,
     bool InStock,
     int QtyAvailable,
@@ -53,6 +54,14 @@ public record PublisherSummaryDto(Guid Id, string Name, string? Country);
 public record ProductAuthorDto(Guid AuthorId, string Name, string Role, string? AvatarUrl);
 public record ProductImageDto(Guid Id, string ImageUrl, string? AltText, bool IsPrimary, int DisplayOrder);
 public record InventoryDto(int QtyAvailable, int QtyReserved, int QtyActual, int MinThreshold, bool IsLowStock, bool IsOutOfStock, string? WarehouseLocation);
+
+public record ProductExcelImportResultDto(
+    int TotalRows,
+    int Created,
+    int Updated,
+    int Failed,
+    IEnumerable<string> Errors
+);
 
 public record PagedResult<T>(IEnumerable<T> Items, int Total, int Page, int PageSize)
 {

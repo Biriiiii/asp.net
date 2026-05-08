@@ -15,6 +15,9 @@ public interface IOrderService
 
     // Payment callback (webhook từ cổng TT)
     Task HandlePaymentCallbackAsync(PaymentCallbackRequest callback);
+    Task MarkPaymentSucceededAsync(string orderCode, string? transactionId = null);
+    Task MarkPaymentSucceededByOrderIdAsync(Guid orderId, string? transactionId = null);
+    Task<Guid?> GetOrderIdByCodeAsync(string orderCode);
 
     // Admin / Staff
     Task<PagedResult<OrderListItemDto>> GetAllAsync(OrderQueryParams query);

@@ -1,5 +1,7 @@
 using BookStore.Application.DTOs.Auth;
 using BookStore.Application.Interfaces;
+using BookStore.Domain.Entities;
+using BookStore.Domain.Enums;
 using BookStore.Domain.Interfaces;
 using System.Security.Cryptography;
 using System.Text;
@@ -9,13 +11,20 @@ namespace BookStore.Application.Services;
 public class AuthService : IAuthService
 {
     private readonly IUserRepository _userRepository;
+    private readonly IOtpRepository _otpRepository;
     private readonly ITokenService _tokenService;
-    private readonly string _salt = "BookStore_Salt_2024";
+    private readonly IEmailService _emailService;
 
-    public AuthService(IUserRepository userRepository, ITokenService tokenService)
+    public AuthService(
+        IUserRepository userRepository,
+        IOtpRepository otpRepository,
+        ITokenService tokenService,
+        IEmailService emailService)
     {
         _userRepository = userRepository;
+        _otpRepository = otpRepository;
         _tokenService = tokenService;
+        _emailService = emailService;
     }
 
     public async Task<AuthTokenDto> LoginAsync(LoginRequest request)
@@ -177,7 +186,68 @@ public class AuthService : IAuthService
     public Task SendEmailVerificationAsync(Guid userId) => Task.CompletedTask;
     public Task VerifyEmailAsync(VerifyEmailRequest request) => Task.CompletedTask;
     public Task SendPhoneOtpAsync(SendOtpRequest request) => Task.CompletedTask;
-    public Task ForgotPasswordAsync(ForgotPasswordRequest request) => Task.CompletedTask;
-    public Task ResetPasswordAsync(ResetPasswordRequest request) => Task.CompletedTask;
+    public async Task ForgotPasswordAsync(ForgotPasswordRequest request)
+    {
+        if (request == null || string.IsNullOrWhiteSpace(request.Email))
+        {
+            return;
+        }
+
+        var user = await _userRepository.GetByEmailAsync(request.Email.Trim().ToLower());
+        if (user == null || string.IsNullOrWhiteSpace(user.Email) || !user.IsActive)
+        {
+            return;
+        }
+
+        await _otpRepository.InvalidatePreviousAsync(user.Id, OtpPurpose.PasswordReset);
+
+        var token = GeneratePasswordResetOtp();
+        var otp = new OtpCode
+        {
+            Id = Guid.NewGuid(),
+            UserId = user.Id,
+            Purpose = OtpPurpose.PasswordReset,
+            Code = ComputeHash(token),
+            Target = user.Email,
+            ExpiresAt = DateTime.UtcNow.AddMinutes(30),
+            CreatedAt = DateTime.UtcNow
+        };
+
+        await _otpRepository.AddAsync(otp);
+        await _otpRepository.SaveChangesAsync();
+        await _emailService.SendPasswordResetAsync(user.Email, user.FullName, token);
+    }
+
+    public async Task ResetPasswordAsync(ResetPasswordRequest request)
+    {
+        if (request == null || string.IsNullOrWhiteSpace(request.Token))
+        {
+            throw new Exception("Token đặt lại mật khẩu không hợp lệ.");
+        }
+
+        if (request.NewPassword != request.ConfirmPassword)
+        {
+            throw new Exception("Mật khẩu xác nhận không khớp.");
+        }
+
+        var tokenHash = ComputeHash(request.Token);
+        var otp = await _otpRepository.GetValidByCodeAsync(tokenHash, OtpPurpose.PasswordReset);
+        if (otp == null || otp.User == null || !otp.User.IsActive)
+        {
+            throw new Exception("Token đặt lại mật khẩu không hợp lệ hoặc đã hết hạn.");
+        }
+
+        otp.User.PasswordHash = ComputeHash(request.NewPassword);
+        otp.IsUsed = true;
+
+        _userRepository.Update(otp.User);
+        _otpRepository.Update(otp);
+        await _otpRepository.SaveChangesAsync();
+    }
     public Task ChangePasswordAsync(Guid userId, ChangePasswordRequest request) => Task.CompletedTask;
+
+    private static string GeneratePasswordResetOtp()
+    {
+        return RandomNumberGenerator.GetInt32(100000, 1000000).ToString();
+    }
 }

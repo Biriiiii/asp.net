@@ -2,6 +2,7 @@
 // FILE: Review/Application/Interfaces/IReviewService.cs
 // ═══════════════════════════════════════════════════════════
 using BookStore.Application.DTOs.Review;
+using BookStore.Application.DTOs.Promotion;
 
 namespace BookStore.Application.Interfaces;
 

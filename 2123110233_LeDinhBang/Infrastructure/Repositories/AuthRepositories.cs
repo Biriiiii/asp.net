@@ -156,6 +156,16 @@ public class OtpRepository : IOtpRepository
             .OrderByDescending(o => o.CreatedAt)
             .FirstOrDefaultAsync();
 
+    public async Task<OtpCode?> GetValidByCodeAsync(string code, OtpPurpose purpose) =>
+        await _db.OtpCodes
+            .Include(o => o.User)
+            .FirstOrDefaultAsync(o =>
+                o.Code == code &&
+                o.Purpose == purpose &&
+                !o.IsUsed &&
+                o.ExpiresAt > DateTime.UtcNow &&
+                o.AttemptCount < 5);
+
     public async Task AddAsync(OtpCode otp) => await _db.OtpCodes.AddAsync(otp);
     public void Update(OtpCode otp)          => _db.OtpCodes.Update(otp);
 

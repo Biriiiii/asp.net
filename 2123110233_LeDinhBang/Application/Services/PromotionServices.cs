@@ -53,10 +53,12 @@ public class VoucherService : IVoucherService
         if (req.EndDate <= req.StartDate)
             throw new InvalidOperationException("EndDate phải sau StartDate.");
 
+        var discountType = NormalizeDiscountType(req.DiscountType);
+
         var v = new Voucher
         {
             Code = req.Code.Trim().ToUpper(), Name = req.Name.Trim(),
-            DiscountType = req.DiscountType, DiscountValue = req.DiscountValue,
+            DiscountType = discountType, DiscountValue = req.DiscountValue,
             MaxDiscountAmount = req.MaxDiscountAmount, MinOrderValue = req.MinOrderValue,
             TotalUsageLimit = req.TotalUsageLimit, PerUserLimit = req.PerUserLimit,
             StartDate = req.StartDate, EndDate = req.EndDate, IsActive = req.IsActive
@@ -70,7 +72,7 @@ public class VoucherService : IVoucherService
     {
         var v = await _vouchers.GetByIdAsync(id)
             ?? throw new KeyNotFoundException($"Voucher Id={id} không tồn tại.");
-        v.Name = req.Name.Trim(); v.DiscountType = req.DiscountType;
+        v.Name = req.Name.Trim(); v.DiscountType = NormalizeDiscountType(req.DiscountType);
         v.DiscountValue = req.DiscountValue; v.MaxDiscountAmount = req.MaxDiscountAmount;
         v.MinOrderValue = req.MinOrderValue; v.TotalUsageLimit = req.TotalUsageLimit;
         v.PerUserLimit = req.PerUserLimit; v.StartDate = req.StartDate;
@@ -96,6 +98,17 @@ public class VoucherService : IVoucherService
         new(v.Id, v.Code, v.Name, v.DiscountType, v.DiscountValue, v.MaxDiscountAmount,
             v.MinOrderValue, v.TotalUsageLimit, v.PerUserLimit, v.UsedCount,
             v.StartDate, v.EndDate, v.IsActive);
+
+    private static string NormalizeDiscountType(string discountType)
+    {
+        var value = discountType.Trim().ToLowerInvariant();
+        return value switch
+        {
+            "percent" or "percentage" or "%" => "percent",
+            "fixed" or "fixedamount" or "fixed_amount" or "amount" => "fixed",
+            _ => throw new InvalidOperationException("DiscountType chỉ nhận percent hoặc fixed.")
+        };
+    }
 }
 
 // ── FlashSaleService ──────────────────────────────────────

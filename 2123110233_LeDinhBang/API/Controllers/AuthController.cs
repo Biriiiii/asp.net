@@ -116,25 +116,25 @@ public class AuthController : ControllerBase
     //    return Ok(new { message = "Xác minh email thành công." });
     //}
 
-    ///// <summary>Yêu cầu đặt lại mật khẩu (gửi link về email)</summary>
-    //[HttpPost("password/forgot")]
-    //[ProducesResponseType(200)]
-    //public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest request)
-    //{
-    //    await _auth.ForgotPasswordAsync(request);
-    //    // Luôn trả 200 để tránh enumeration attack
-    //    return Ok(new { message = "Nếu email tồn tại, link đặt lại mật khẩu đã được gửi." });
-    //}
+    /// <summary>Yêu cầu đặt lại mật khẩu (gửi link về email)</summary>
+    [HttpPost("password/forgot")]
+    [ProducesResponseType(200)]
+    public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest request)
+    {
+        await _auth.ForgotPasswordAsync(request);
+        // Luôn trả 200 để tránh dò email tồn tại trong hệ thống.
+        return Ok(new { message = "Nếu email tồn tại, link đặt lại mật khẩu đã được gửi." });
+    }
 
-    ///// <summary>Đặt lại mật khẩu bằng token từ email</summary>
-    //[HttpPost("password/reset")]
-    //[ProducesResponseType(200)]
-    //[ProducesResponseType(400)]
-    //public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest request)
-    //{
-    //    await _auth.ResetPasswordAsync(request);
-    //    return Ok(new { message = "Đặt lại mật khẩu thành công. Vui lòng đăng nhập lại." });
-    //}
+    /// <summary>Đặt lại mật khẩu bằng token từ email</summary>
+    [HttpPost("password/reset")]
+    [ProducesResponseType(200)]
+    [ProducesResponseType(400)]
+    public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest request)
+    {
+        await _auth.ResetPasswordAsync(request);
+        return Ok(new { message = "Đặt lại mật khẩu thành công. Vui lòng đăng nhập lại." });
+    }
 
     ///// <summary>Đổi mật khẩu khi đang đăng nhập</summary>
     //[HttpPost("password/change")]
